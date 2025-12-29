@@ -111,31 +111,43 @@ def load_data():
             series = series.dt.tz_localize(None)
         return series
     
-    # --- Normalize column names to match CSV structure ---
-    # Customers: customer_id, name, email, region
+    # --- Debug: Print actual column names ---
+    print("DEBUG: Actual Firestore columns:")
+    print(f"Customers: {list(customers_df.columns) if not customers_df.empty else 'EMPTY'}")
+    print(f"Orders: {list(orders_df.columns) if not orders_df.empty else 'EMPTY'}")
+    print(f"Products: {list(products_df.columns) if not products_df.empty else 'EMPTY'}")
+    print(f"Revenue: {list(revenue_df.columns) if not revenue_df.empty else 'EMPTY'}")
+    
+    # --- Flexible column mapping (handles both formats) ---
+    # Customers: Try both CustomerID and customer_id formats
     if not customers_df.empty:
-        column_mapping = {
-            'CustomerID': 'customer_id',
-            'Name': 'name',
-            'Email': 'email',
-            'Region': 'region'
-        }
-        customers_df = customers_df.rename(columns=column_mapping)
+        # Create mapping based on what exists
+        customer_mapping = {}
+        for old, new in [('CustomerID', 'customer_id'), ('Name', 'name'), 
+                         ('Email', 'email'), ('Region', 'region')]:
+            if old in customers_df.columns:
+                customer_mapping[old] = new
+        
+        customers_df = customers_df.rename(columns=customer_mapping)
+        
+        # Ensure customer_id exists
         if 'customer_id' in customers_df.columns:
             customers_df['customer_id'] = customers_df['customer_id'].astype(str).str.strip().str.upper()
+        else:
+            print("WARNING: customer_id column not found in customers!")
     
-    # Orders: order_id, customer_id, product_id, status, order_date, est_delivery
+    # Orders: Flexible mapping
     if not orders_df.empty:
-        column_mapping = {
-            'OrderID': 'order_id',
-            'CustomerID': 'customer_id',
-            'ProductID': 'product_id',
-            'Status': 'status',
-            'OrderDate': 'order_date',
-            'EstDeliveryDate': 'est_delivery'
-        }
-        orders_df = orders_df.rename(columns=column_mapping)
+        orders_mapping = {}
+        for old, new in [('OrderID', 'order_id'), ('CustomerID', 'customer_id'),
+                         ('ProductID', 'product_id'), ('Status', 'status'),
+                         ('OrderDate', 'order_date'), ('EstDeliveryDate', 'est_delivery')]:
+            if old in orders_df.columns:
+                orders_mapping[old] = new
         
+        orders_df = orders_df.rename(columns=orders_mapping)
+        
+        # Type conversions
         if 'order_id' in orders_df.columns:
             orders_df['order_id'] = orders_df['order_id'].astype(str)
         if 'customer_id' in orders_df.columns:
@@ -143,37 +155,37 @@ def load_data():
         if 'product_id' in orders_df.columns:
             orders_df['product_id'] = orders_df['product_id'].astype(str)
         
+        # Date conversions
         for col in ['order_date', 'est_delivery']:
             if col in orders_df.columns:
                 orders_df[col] = to_datetime_clean(orders_df[col])
     
-    # Products: product_id, name, category, price, stock_level
+    # Products: Flexible mapping
     if not products_df.empty:
-        column_mapping = {
-            'ProductID': 'product_id',
-            'Name': 'name',
-            'Category': 'category',
-            'Price': 'price',
-            'StockLevel': 'stock_level',
-            'TotalSold': 'total_sold'
-        }
-        products_df = products_df.rename(columns=column_mapping)
+        products_mapping = {}
+        for old, new in [('ProductID', 'product_id'), ('Name', 'name'),
+                         ('Category', 'category'), ('Price', 'price'),
+                         ('StockLevel', 'stock_level'), ('TotalSold', 'total_sold')]:
+            if old in products_df.columns:
+                products_mapping[old] = new
+        
+        products_df = products_df.rename(columns=products_mapping)
         
         if 'product_id' in products_df.columns:
             products_df['product_id'] = products_df['product_id'].astype(str)
         if 'price' in products_df.columns:
             products_df['price'] = pd.to_numeric(products_df['price'], errors='coerce')
     
-    # Revenue: revenue_id, order_id, amount, date, payment_method
+    # Revenue: Flexible mapping
     if not revenue_df.empty:
-        column_mapping = {
-            'RevenueID': 'revenue_id',
-            'OrderID': 'order_id',
-            'Amount': 'amount',
-            'Date': 'date',
-            'PaymentMethod': 'payment_method'
-        }
-        revenue_df = revenue_df.rename(columns=column_mapping)
+        revenue_mapping = {}
+        for old, new in [('RevenueID', 'revenue_id'), ('OrderID', 'order_id'),
+                         ('Amount', 'amount'), ('Date', 'date'),
+                         ('PaymentMethod', 'payment_method')]:
+            if old in revenue_df.columns:
+                revenue_mapping[old] = new
+        
+        revenue_df = revenue_df.rename(columns=revenue_mapping)
         
         if 'order_id' in revenue_df.columns:
             revenue_df['order_id'] = revenue_df['order_id'].astype(str)
@@ -181,6 +193,13 @@ def load_data():
             revenue_df['date'] = to_datetime_clean(revenue_df['date'])
         if 'amount' in revenue_df.columns:
             revenue_df['amount'] = pd.to_numeric(revenue_df['amount'], errors='coerce')
+    
+    # Final debug: Show resulting columns
+    print("DEBUG: After renaming:")
+    print(f"Customers: {list(customers_df.columns) if not customers_df.empty else 'EMPTY'}")
+    print(f"Orders: {list(orders_df.columns) if not orders_df.empty else 'EMPTY'}")
+    print(f"Products: {list(products_df.columns) if not products_df.empty else 'EMPTY'}")
+    print(f"Revenue: {list(revenue_df.columns) if not revenue_df.empty else 'EMPTY'}")
     
     return {
         "customers_df": customers_df,
