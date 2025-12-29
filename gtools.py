@@ -15,20 +15,46 @@ FIREBASE_CREDS_FILE = 'firebase_creds.json'
 db = None
 FIREBASE_INIT_STATUS = ""
 
-if os.path.exists(FIREBASE_CREDS_FILE):
-    try:
-        if not firebase_admin._apps:
-            cred = credentials.Certificate(FIREBASE_CREDS_FILE)
-            firebase_admin.initialize_app(cred)
+# Try to initialize Firebase
+try:
+    if not firebase_admin._apps:
+        cred = None
         
+        # Try Streamlit secrets first (for cloud deployment)
+        try:
+            import streamlit as st
+            if hasattr(st, 'secrets') and "firebase" in st.secrets:
+                # Use Streamlit secrets (for deployed app)
+                firebase_config = dict(st.secrets["firebase"])
+                cred = credentials.Certificate(firebase_config)
+                firebase_admin.initialize_app(cred)
+                db = firestore.client()
+                FIREBASE_INIT_STATUS = "SUCCESS (Streamlit Cloud)"
+            else:
+                raise KeyError("No Streamlit secrets found")
+        except (ImportError, KeyError, AttributeError) as e:
+            # Fall back to local credentials file
+            if os.path.exists(FIREBASE_CREDS_FILE):
+                cred = credentials.Certificate(FIREBASE_CREDS_FILE)
+                firebase_admin.initialize_app(cred)
+                db = firestore.client()
+                FIREBASE_INIT_STATUS = "SUCCESS (Local File)"
+            else:
+                FIREBASE_INIT_STATUS = f"ERROR: Firebase credentials not found. Checked Streamlit secrets and local file ({FIREBASE_CREDS_FILE})"
+                db = None
+    else:
         db = firestore.client()
-        FIREBASE_INIT_STATUS = "SUCCESS"
-    except Exception as e:
-        FIREBASE_INIT_STATUS = str(f"ERROR: Firebase Initialization Failed. Details: {e}")
-        db = None
-else:
-    FIREBASE_INIT_STATUS = str(f"ERROR: Firebase credentials file not found: {FIREBASE_CREDS_FILE}")
+        FIREBASE_INIT_STATUS = "SUCCESS (Already Initialized)"
+        
+except Exception as e:
+    FIREBASE_INIT_STATUS = f"ERROR: Firebase Initialization Failed. Details: {str(e)}"
     db = None
+    
+# Debug logging (will show in Streamlit Cloud logs)
+if db is None:
+    print(f"⚠️ Firebase initialization failed: {FIREBASE_INIT_STATUS}")
+else:
+    print(f"✅ Firebase initialized: {FIREBASE_INIT_STATUS}")
 
 
 # --- Data Loading Helper Functions ---
