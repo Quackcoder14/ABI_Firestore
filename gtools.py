@@ -290,50 +290,77 @@ def get_customer_orders(customer_id: str) -> str:
 
 def check_customer_order_status(customer_id: str) -> dict:
     """Checks if a customer has any delayed orders for notifications."""
-    data = load_data()
-    if isinstance(data, str):
-        return {"status": "error", "message": "Unable to load data"}
-    
-    orders_df = data['orders_df']
-    
-    clean_id = str(customer_id).strip().upper()
-    customer_orders = orders_df[orders_df['customer_id'] == clean_id]
-    
-    if customer_orders.empty:
-        return {"status": "normal", "message": "You have no active orders"}
-    
-    today = pd.to_datetime(datetime.now().strftime('%Y-%m-%d'))
-    
-    delayed = customer_orders[
-        (customer_orders['est_delivery'] < today) & 
-        (customer_orders['status'] != 'Delivered') &
-        (customer_orders['status'] != 'Cancelled') &
-        (pd.notna(customer_orders['est_delivery']))
-    ]
-    
-    if not delayed.empty:
-        count = len(delayed)
-        return {
-            "status": "delayed",
-            "message": f"⚠️ You have {count} delayed order{'s' if count > 1 else ''}!",
-            "count": count
-        }
-    else:
-        on_time_count = len(customer_orders[customer_orders['status'].isin(['Pending', 'Shipped'])])
-        delivered_count = len(customer_orders[customer_orders['status'] == 'Delivered'])
+    try:
+        data = load_data()
+        if isinstance(data, str):
+            print(f"ERROR in check_customer_order_status: {data}")
+            return {"status": "error", "message": "Unable to load data"}
         
-        if on_time_count > 0:
+        orders_df = data['orders_df']
+        
+        # Debug logging
+        print(f"DEBUG check_customer_order_status:")
+        print(f"  - customer_id param: {customer_id}")
+        print(f"  - orders_df shape: {orders_df.shape}")
+        print(f"  - orders_df columns: {list(orders_df.columns)}")
+        print(f"  - orders_df empty: {orders_df.empty}")
+        
+        if orders_df.empty:
+            return {"status": "normal", "message": "You have no active orders"}
+        
+        # Check if customer_id column exists
+        if 'customer_id' not in orders_df.columns:
+            print(f"ERROR: 'customer_id' column not found in orders_df")
+            print(f"Available columns: {list(orders_df.columns)}")
+            return {"status": "error", "message": "Data structure error"}
+        
+        clean_id = str(customer_id).strip().upper()
+        print(f"  - clean_id: {clean_id}")
+        print(f"  - Sample customer_ids in orders: {orders_df['customer_id'].head().tolist()}")
+        
+        customer_orders = orders_df[orders_df['customer_id'] == clean_id]
+        print(f"  - Found {len(customer_orders)} orders for customer")
+        
+        if customer_orders.empty:
+            return {"status": "normal", "message": "You have no active orders"}
+        
+        today = pd.to_datetime(datetime.now().strftime('%Y-%m-%d'))
+        
+        delayed = customer_orders[
+            (customer_orders['est_delivery'] < today) & 
+            (customer_orders['status'] != 'Delivered') &
+            (customer_orders['status'] != 'Cancelled') &
+            (pd.notna(customer_orders['est_delivery']))
+        ]
+        
+        if not delayed.empty:
+            count = len(delayed)
             return {
-                "status": "normal",
-                "message": f"✅ All {on_time_count} active order{'s are' if on_time_count > 1 else ' is'} on track!",
-                "count": on_time_count
+                "status": "delayed",
+                "message": f"⚠️ You have {count} delayed order{'s' if count > 1 else ''}!",
+                "count": count
             }
         else:
-            return {
-                "status": "normal",
-                "message": f"✅ You have {delivered_count} completed order{'s' if delivered_count > 1 else ''}",
-                "count": delivered_count
-            }
+            on_time_count = len(customer_orders[customer_orders['status'].isin(['Pending', 'Shipped'])])
+            delivered_count = len(customer_orders[customer_orders['status'] == 'Delivered'])
+            
+            if on_time_count > 0:
+                return {
+                    "status": "normal",
+                    "message": f"✅ All {on_time_count} active order{'s are' if on_time_count > 1 else ' is'} on track!",
+                    "count": on_time_count
+                }
+            else:
+                return {
+                    "status": "normal",
+                    "message": f"✅ You have {delivered_count} completed order{'s' if delivered_count > 1 else ''}",
+                    "count": delivered_count
+                }
+    except Exception as e:
+        print(f"EXCEPTION in check_customer_order_status: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {"status": "error", "message": "Error checking orders"}
 
 
 # --- BUSINESS TOOL (Full Access) ---
