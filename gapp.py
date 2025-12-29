@@ -19,15 +19,7 @@ from datetime import datetime
 
 # --- Configuration and Initialization ---
 load_dotenv()
-
-# Try to get API key from Streamlit secrets first, then fall back to .env
-try:
-    if "GEMINI_API_KEY" in st.secrets:
-        GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
-    else:
-        GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-except:
-    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 # --- Streamlit Setup ---
 st.set_page_config(
@@ -462,7 +454,7 @@ def handle_chat_interaction(prompt, role):
     for attempt in range(max_retries):
         try:
             response = client.models.generate_content(
-                model='gemini-2.0-flash-exp',
+                model='gemini-2.5-flash',
                 contents=contents,
                 config=config
             )
@@ -536,7 +528,7 @@ def handle_chat_interaction(prompt, role):
                         
                         # Get final response
                         response = client.models.generate_content(
-                            model='gemini-2.0-flash-exp',
+                            model='gemini-2.5-flash',
                             contents=contents,
                             config=config
                         )
@@ -644,4 +636,532 @@ def render_auth_page():
     with col2:
         st.markdown("<div class='login-container'>", unsafe_allow_html=True)
         
-        st.
+        st.markdown("<h3>Login</h3>", unsafe_allow_html=True)
+        
+        with st.form("login_form"):
+            login_username = st.text_input("User ID", key="login_username")
+            login_password = st.text_input("Password", type="password", key="login_password")
+            login_button = st.form_submit_button("Login", use_container_width=True)
+
+            if login_button:
+                authenticate_user(login_username, login_password, role)
+        
+        st.markdown("---")
+        st.markdown("<h3>New User Registration</h3>", unsafe_allow_html=True)
+
+        with st.form("register_form"):
+            register_username = st.text_input("New User ID", key="register_username")
+            register_password = st.text_input("New Password (Min 6 chars)", type="password", key="register_password")
+            
+            # Customer-specific field
+            register_customer_id = None
+            if role == "customer":
+                register_customer_id = st.text_input("Your Customer ID (e.g., CUST_001)", key="register_customer_id", 
+                                                     help="This links your account to your orders in our system")
+            
+            register_button = st.form_submit_button("Create Account", use_container_width=True, type="secondary")
+
+            if register_button:
+                create_new_user(register_username, register_password, role, register_customer_id)
+            
+        st.markdown("</div>", unsafe_allow_html=True)
+    
+    st.markdown("<div style='text-align: center; margin-top: 30px;'>", unsafe_allow_html=True)
+    col_back1, col_back2, col_back3 = st.columns([1, 2, 1])
+    with col_back2:
+        if st.button("⬅️ Cancel and Go Back", key="auth_back", use_container_width=True):
+            st.session_state.auth_role_pending = None
+            st.session_state.page = "selector"
+            st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
+
+def render_selector_page():
+    """Renders the role selection page"""
+    st.sidebar.empty()
+    # Reset notification flag when going back to selector
+    st.session_state.notification_shown = False
+    st.markdown("<div style='margin-top: 50px;'>", unsafe_allow_html=True) 
+    st.markdown("<h1 style='text-align: center; margin-bottom: 40px;'>🤖 Autonomous Business Intelligence Agent</h1>", unsafe_allow_html=True)
+    
+    col_left, col_cust, col_mid, col_biz, col_right = st.columns([1, 3, 0.5, 3, 1])
+    
+    with col_cust:
+        st.markdown("""<div class="role-card-container card-customer"><div class="card-icon">📦</div><div class="card-title">Customer Portal</div><div class="card-desc">Track Orders • Check Delivery • Shipping Updates</div></div>""", unsafe_allow_html=True)
+        if st.button("Enter Customer Portal", use_container_width=True):
+            st.session_state.auth_role_pending = "customer"
+            st.session_state.page = "auth"
+            st.rerun()
+    
+    with col_biz:
+        st.markdown("""<div class="role-card-container card-business"><div class="card-icon">📊</div><div class="card-title">Business Command</div><div class="card-desc">Revenue Analytics • Anomaly Detection • Sales Data</div></div>""", unsafe_allow_html=True)
+        if st.button("Enter Business Command", use_container_width=True):
+            st.session_state.auth_role_pending = "business"
+            st.session_state.page = "auth"
+            st.rerun()
+    
+    st.markdown("</div>", unsafe_allow_html=True)
+
+def render_chat_page(role):
+    """Renders the chat interface for customer or business users"""
+    if st.session_state.authenticated_user is None:
+        st.warning("Access Denied. Please login.")
+        st.session_state.page = "selector"
+        st.rerun()
+        return
+
+    # Show notification on first load
+    if not st.session_state.notification_shown:
+        if role == "customer" and st.session_state.customer_id:
+            # Check customer order status
+            status_info = check_customer_order_status(st.session_state.customer_id)
+            notification_type = "success" if status_info["status"] != "delayed" else "error"
+            notification_title = "Order Status" if status_info["status"] != "delayed" else "Delivery Alert"
+            
+            notification_html = f"""
+            <style>
+                .notification-stack {{
+                    position: fixed;
+                    bottom: 20px;
+                    right: 20px;
+                    z-index: 9999;
+                    display: flex;
+                    flex-direction: column-reverse;
+                    gap: 10px;
+                    max-width: 400px;
+                }}
+                .notification-container {{
+                    min-width: 320px;
+                    animation: slideInBottom 0.5s ease-out;
+                }}
+                @keyframes slideInBottom {{
+                    from {{
+                        transform: translateX(400px);
+                        opacity: 0;
+                    }}
+                    to {{
+                        transform: translateX(0);
+                        opacity: 1;
+                    }}
+                }}
+                @keyframes fadeOut {{
+                    from {{
+                        opacity: 1;
+                    }}
+                    to {{
+                        opacity: 0;
+                        transform: translateX(400px);
+                    }}
+                }}
+                .notification-box {{
+                    background: rgba(0, 0, 0, 0.95);
+                    border-radius: 12px;
+                    padding: 1rem 1.2rem;
+                    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);
+                    border: 2px solid;
+                    backdrop-filter: blur(10px);
+                }}
+                .notification-success {{
+                    border-color: #00ff00;
+                    box-shadow: 0 8px 32px rgba(0, 255, 0, 0.3);
+                }}
+                .notification-error {{
+                    border-color: #ff0000;
+                    box-shadow: 0 8px 32px rgba(255, 0, 0, 0.3);
+                }}
+                .notification-header {{
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    margin-bottom: 0.5rem;
+                }}
+                .notification-title {{
+                    font-size: 1rem;
+                    font-weight: 700;
+                    color: #ffffff;
+                    margin: 0;
+                }}
+                .notification-close {{
+                    background: transparent;
+                    border: none;
+                    color: rgba(255, 255, 255, 0.6);
+                    font-size: 1.8rem;
+                    cursor: pointer;
+                    padding: 0;
+                    width: 28px;
+                    height: 28px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    transition: color 0.2s;
+                    line-height: 0.8;
+                }}
+                .notification-close:hover {{
+                    color: #ffffff;
+                }}
+                .notification-message {{
+                    color: rgba(255, 255, 255, 0.9);
+                    font-size: 0.9rem;
+                    line-height: 1.4;
+                    margin: 0;
+                    word-break: break-word;
+                }}
+                .notification-success .notification-title {{
+                    color: #00ff00;
+                }}
+                .notification-error .notification-title {{
+                    color: #ff0000;
+                }}
+            </style>
+            <div class="notification-stack">
+                <div class="notification-container" id="notif-customer">
+                    <div class="notification-box notification-{notification_type}">
+                        <div class="notification-header">
+                            <h3 class="notification-title">{notification_title}</h3>
+                            <button class="notification-close" onclick="document.getElementById('notif-customer').remove()">×</button>
+                        </div>
+                        <p class="notification-message">{status_info["message"]}</p>
+                    </div>
+                </div>
+            </div>
+            <script>
+                setTimeout(function() {{
+                    const container = document.getElementById('notif-customer');
+                    if (container) {{
+                        container.style.animation = 'fadeOut 1s ease-out forwards';
+                        setTimeout(() => container.remove(), 1000);
+                    }}
+                }}, 10000);
+            </script>
+            """
+            st.components.v1.html(notification_html, height=200)
+            
+        elif role == "business":
+            # Check business status - need to run audit if pending
+            if st.session_state.revenue_alert_status == "Pending (Run Audit)":
+                st.session_state.revenue_alert_status = check_for_revenue_anomalies()
+            if st.session_state.delay_alert_status == "Pending (Run Audit)":
+                st.session_state.delay_alert_status = check_for_critical_delays()
+            
+            revenue_status = st.session_state.revenue_alert_status
+            delay_status = st.session_state.delay_alert_status
+            
+            # Check for revenue issues
+            has_revenue_issue = "CRITICAL" in revenue_status
+            has_delay_issue = "ALERT" in delay_status
+            
+            notifications = []
+            
+            # Revenue notification
+            if has_revenue_issue:
+                # Extract amount from status
+                import re
+                amount_match = re.search(r'\$([0-9,]+\.[0-9]{2})', revenue_status)
+                amount = amount_match.group(0) if amount_match else ""
+                order_match = re.search(r'Order: ([A-Z_0-9]+)', revenue_status)
+                order = order_match.group(1) if order_match else ""
+                
+                notifications.append({
+                    "type": "error",
+                    "title": "💰 Revenue Alert",
+                    "message": f"⚠️ Anomaly: {amount} (Order: {order})"
+                })
+            else:
+                notifications.append({
+                    "type": "success",
+                    "title": "💰 Revenue Status",
+                    "message": "✅ Revenue metrics normal"
+                })
+            
+            # Logistics notification
+            if has_delay_issue:
+                # Extract the number of delayed orders
+                import re
+                match = re.search(r'(\d+) orders', delay_status)
+                count = match.group(1) if match else "Multiple"
+                
+                # Extract order IDs
+                orders_match = re.search(r'Affected Orders: ([A-Z_0-9, ]+)', delay_status)
+                orders = orders_match.group(1) if orders_match else ""
+                
+                notifications.append({
+                    "type": "error",
+                    "title": "🚚 Logistics Alert",
+                    "message": f"⚠️ {count} orders delayed: {orders}"
+                })
+            else:
+                notifications.append({
+                    "type": "success",
+                    "title": "🚚 Logistics Status",
+                    "message": "✅ All deliveries on schedule"
+                })
+            
+            # Build notification HTML
+            notification_html = """
+            <style>
+                .notification-stack {
+                    position: fixed;
+                    bottom: 20px;
+                    right: 20px;
+                    z-index: 9999;
+                    display: flex;
+                    flex-direction: column-reverse;
+                    gap: 10px;
+                    max-width: 400px;
+                }
+                .notification-container {
+                    min-width: 320px;
+                    animation: slideInBottom 0.5s ease-out;
+                }
+                @keyframes slideInBottom {
+                    from {
+                        transform: translateX(400px);
+                        opacity: 0;
+                    }
+                    to {
+                        transform: translateX(0);
+                        opacity: 1;
+                    }
+                }
+                @keyframes fadeOut {
+                    from {
+                        opacity: 1;
+                    }
+                    to {
+                        opacity: 0;
+                        transform: translateX(400px);
+                    }
+                }
+                .notification-box {
+                    background: rgba(0, 0, 0, 0.95);
+                    border-radius: 12px;
+                    padding: 1rem 1.2rem;
+                    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);
+                    border: 2px solid;
+                    backdrop-filter: blur(10px);
+                }
+                .notification-success {
+                    border-color: #00ff00;
+                    box-shadow: 0 8px 32px rgba(0, 255, 0, 0.3);
+                }
+                .notification-error {
+                    border-color: #ff0000;
+                    box-shadow: 0 8px 32px rgba(255, 0, 0, 0.3);
+                }
+                .notification-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    margin-bottom: 0.5rem;
+                }
+                .notification-title {
+                    font-size: 1rem;
+                    font-weight: 700;
+                    color: #ffffff;
+                    margin: 0;
+                }
+                .notification-close {
+                    background: transparent;
+                    border: none;
+                    color: rgba(255, 255, 255, 0.6);
+                    font-size: 1.8rem;
+                    cursor: pointer;
+                    padding: 0;
+                    width: 28px;
+                    height: 28px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    transition: color 0.2s;
+                    line-height: 0.8;
+                }
+                .notification-close:hover {
+                    color: #ffffff;
+                }
+                .notification-message {
+                    color: rgba(255, 255, 255, 0.9);
+                    font-size: 0.9rem;
+                    line-height: 1.4;
+                    margin: 0;
+                    word-break: break-word;
+                }
+                .notification-success .notification-title {
+                    color: #00ff00;
+                }
+                .notification-error .notification-title {
+                    color: #ff0000;
+                }
+            </style>
+            <div class="notification-stack">
+            """
+            
+            for i, notif in enumerate(notifications):
+                notification_html += f"""
+                <div class="notification-container" id="notif-{i}">
+                    <div class="notification-box notification-{notif['type']}">
+                        <div class="notification-header">
+                            <h3 class="notification-title">{notif['title']}</h3>
+                            <button class="notification-close" onclick="document.getElementById('notif-{i}').remove()">×</button>
+                        </div>
+                        <p class="notification-message">{notif['message']}</p>
+                    </div>
+                </div>
+                """
+            
+            notification_html += """
+            </div>
+            <script>
+                setTimeout(function() {
+                    const containers = document.querySelectorAll('.notification-container');
+                    containers.forEach(c => {
+                        c.style.animation = 'fadeOut 1s ease-out forwards';
+                        setTimeout(() => c.remove(), 1000);
+                    });
+                }, 10000);
+            </script>
+            """
+            
+            st.components.v1.html(notification_html, height=250)
+        
+        st.session_state.notification_shown = True
+
+    # --- SIDEBAR CONTENT ---
+    with st.sidebar:
+        st.header("Session")
+        if role == "customer" and st.session_state.customer_id:
+            st.info(f"**Customer:** {st.session_state.authenticated_user}\n**ID:** {st.session_state.customer_id}")
+        else:
+            st.info(f"**Logged in as:** {st.session_state.authenticated_user}")
+        
+        # Firebase status
+        if "SUCCESS" in FIREBASE_INIT_STATUS:
+            st.success("✓ Firebase Connected")
+        else:
+            st.error("✗ Firebase Disconnected")
+        
+        if st.button("🚪 Logout & Return Home", key="sidebar_logout", use_container_width=True): 
+            st.session_state.authenticated_user = None 
+            st.session_state.customer_id = None
+            st.session_state.auth_role_pending = None
+            st.session_state.customer_history = []
+            st.session_state.business_history = []
+            st.session_state.audit_log = []
+            st.session_state.notification_shown = False
+            st.session_state.page = "selector"
+            st.rerun()
+        
+        st.markdown("---")
+        
+        if role == "business":
+            st.header("⚡ System Actions")
+            if st.button("🚨 Run System Audit", key="run_audit_sidebar", use_container_width=True):
+                with st.spinner("Running diagnostic scans on Revenue & Logistics..."):
+                    st.session_state.revenue_alert_status = check_for_revenue_anomalies()
+                    st.session_state.delay_alert_status = check_for_critical_delays()
+                    st.session_state.notification_shown = False  # Reset to show new notification
+                st.rerun()
+            
+            st.markdown("---")
+            st.header("📊 Live Status")
+            
+            if "CRITICAL" in st.session_state.revenue_alert_status:
+                st.error(f"💰 **Revenue:**\n{st.session_state.revenue_alert_status}")
+            else:
+                st.success(f"💰 **Revenue:**\nNormal")
+            
+            if "ALERT" in st.session_state.delay_alert_status:
+                st.error(f"🚚 **Logistics:**\n{st.session_state.delay_alert_status}")
+            else:
+                st.success(f"🚚 **Logistics:**\nNormal")
+
+    # --- MAIN CHAT AREA ---
+    st.markdown("<div style='margin-top: 30px;'>", unsafe_allow_html=True)
+    
+    # Welcome banner
+    username = st.session_state.authenticated_user
+    if role == "customer":
+        greeting = f"Welcome back, {username}!"
+        subtitle = "I'm here to help you track your orders and deliveries"
+        st.markdown(f"""
+        <div class='welcome-banner'>
+            <p class='welcome-text'>👋 {greeting}</p>
+            <p class='welcome-subtitle'>{subtitle}</p>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        greeting = f"Welcome, {username}!"
+        subtitle = "Your intelligent business analytics assistant"
+        st.markdown(f"""
+        <div class='welcome-banner'>
+            <p class='welcome-text'>📊 {greeting}</p>
+            <p class='welcome-subtitle'>{subtitle}</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    if role == "customer":
+        st.title("💬 Customer Support")
+        st.caption("How can I help you with your orders today?")
+        history_key = "customer_history"
+    else:
+        st.title("📈 Business Intelligence Hub")
+        st.caption("Ask anything about your data. I can analyze trends, totals, and cross-table insights.")
+        history_key = "business_history"
+
+    col_chat, col_glass = st.columns([0.65, 0.35], gap="large")
+
+    with col_chat:
+        # Display chat history
+        for message in st.session_state[history_key]:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+
+        # Chat input
+        if prompt := st.chat_input("Type your query here..."):
+            with st.chat_message("user"):
+                st.markdown(prompt)
+            st.session_state[history_key].append({"role": "user", "content": prompt})
+
+            with st.spinner("Thinking..."):
+                final_text, tool_steps = handle_chat_interaction(prompt, role)
+            
+            st.session_state.audit_log = tool_steps
+            st.session_state[history_key].append({"role": "assistant", "content": final_text})
+            st.rerun()
+
+    # --- GLASS BOX (Tool Execution Viewer) ---
+    with col_glass:
+        st.subheader("🔍 Agent Thought Process")
+        
+        if st.session_state.audit_log:
+            for step in st.session_state.audit_log:
+                if step["type"] == "Tool Call":
+                    with st.expander(f"🛠️ Executing: {step['name']}", expanded=False):
+                        if step['name'] == 'execute_pandas_code_business':
+                            st.code(step['args'].get('python_code', ''), language='python')
+                        else:
+                            st.json(step['args'])
+                
+                elif step["type"] == "Tool Output":
+                    res = str(step['output'])
+                    if "ERROR" in res or "CRITICAL" in res:
+                        st.error(f"**Result:** {res}")
+                    else:
+                        st.success(f"**Result:** {res}")
+        else:
+            st.markdown("<p style='opacity: 0.6; font-style: italic;'>No external tools required for this response.</p>", unsafe_allow_html=True)
+        
+        # Developer debug section
+        with st.expander("🛠️ Developer Debug"):
+            if st.session_state.last_raw_response:
+                st.write(st.session_state.last_raw_response)
+                
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# --- ROUTER ---
+if st.session_state.page == "selector":
+    render_selector_page()
+elif st.session_state.page == "auth":
+    render_auth_page()
+elif st.session_state.page == "customer_chat":
+    render_chat_page("customer")
+elif st.session_state.page == "business_chat":
+    render_chat_page("business")
