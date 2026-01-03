@@ -1,4 +1,4 @@
-# gtools.py
+# gtools.py - FIXED VERSION with robust column handling
 import firebase_admin
 from firebase_admin import credentials, firestore
 import pandas as pd
@@ -61,8 +61,8 @@ else:
 
 def get_firestore_collection(collection_name: str) -> tuple[pd.DataFrame, str]:
     """Retrieves all data from a specific Firestore collection."""
-    if db is None or FIREBASE_INIT_STATUS != "SUCCESS":
-        return pd.DataFrame(), FIREBASE_INIT_STATUS
+    if db is None:
+        return pd.DataFrame(), f"ERROR: Firebase not initialized. Status: {FIREBASE_INIT_STATUS}"
     
     try:
         docs = db.collection(collection_name).stream()
@@ -71,7 +71,10 @@ def get_firestore_collection(collection_name: str) -> tuple[pd.DataFrame, str]:
         
         if df.empty:
             return df, f"ERROR: Collection '{collection_name}' is empty or does not exist."
-            
+        
+        # Debug: Print actual column names
+        print(f"✅ Loaded {collection_name}: {len(df)} rows, columns: {list(df.columns)}")
+        
         return df, "SUCCESS"
         
     except Exception as e:
@@ -81,7 +84,7 @@ def get_firestore_collection(collection_name: str) -> tuple[pd.DataFrame, str]:
 def load_data():
     """
     Loads all dataframes from Firestore with proper cleaning and type conversion.
-    Returns: (customers_df, orders_df, products_df, revenue_df) or error message
+    Returns: dict with dataframes or error message string
     """
     customers_df, customers_status = get_firestore_collection('customers')
     orders_df, orders_status = get_firestore_collection('orders')
@@ -111,15 +114,29 @@ def load_data():
             series = series.dt.tz_localize(None)
         return series
     
+    # --- Normalize Column Names (handle case sensitivity) ---
+    def normalize_columns(df):
+        """Normalize column names to lowercase with underscores"""
+        df.columns = df.columns.str.strip().str.lower().str.replace(' ', '_')
+        return df
+    
+    # Normalize all dataframes
+    if not customers_df.empty:
+        customers_df = normalize_columns(customers_df)
+    if not orders_df.empty:
+        orders_df = normalize_columns(orders_df)
+    if not products_df.empty:
+        products_df = normalize_columns(products_df)
+    if not revenue_df.empty:
+        revenue_df = normalize_columns(revenue_df)
+    
     # --- Process Customers ---
     if not customers_df.empty:
-        # Columns are already lowercase, just ensure proper types
         if 'customer_id' in customers_df.columns:
             customers_df['customer_id'] = customers_df['customer_id'].astype(str).str.strip().str.upper()
     
     # --- Process Orders ---
     if not orders_df.empty:
-        # Columns are already lowercase
         if 'order_id' in orders_df.columns:
             orders_df['order_id'] = orders_df['order_id'].astype(str)
         if 'customer_id' in orders_df.columns:
@@ -127,22 +144,28 @@ def load_data():
         if 'product_id' in orders_df.columns:
             orders_df['product_id'] = orders_df['product_id'].astype(str)
         
-        # Date conversions
-        for col in ['order_date', 'est_delivery']:
+        # Date conversions - handle both possible column names
+        for col in ['order_date', 'orderdate']:
             if col in orders_df.columns:
-                orders_df[col] = to_datetime_clean(orders_df[col])
+                orders_df['order_date'] = to_datetime_clean(orders_df[col])
+                break
+        
+        for col in ['est_delivery', 'estdelivery', 'estimated_delivery']:
+            if col in orders_df.columns:
+                orders_df['est_delivery'] = to_datetime_clean(orders_df[col])
+                break
     
     # --- Process Products ---
     if not products_df.empty:
-        # Columns are already lowercase
         if 'product_id' in products_df.columns:
             products_df['product_id'] = products_df['product_id'].astype(str)
         if 'price' in products_df.columns:
             products_df['price'] = pd.to_numeric(products_df['price'], errors='coerce')
+        if 'stock_level' in products_df.columns:
+            products_df['stock_level'] = pd.to_numeric(products_df['stock_level'], errors='coerce')
     
     # --- Process Revenue ---
     if not revenue_df.empty:
-        # Columns are already lowercase
         if 'order_id' in revenue_df.columns:
             revenue_df['order_id'] = revenue_df['order_id'].astype(str)
         if 'date' in revenue_df.columns:
@@ -271,13 +294,15 @@ def get_customer_orders(customer_id: str) -> str:
         result += f"  Product: {row['name']} ({row['category']})\n"
         result += f"  Price: ${row['price']:.2f}\n"
         result += f"  Status: {row['status']}\n"
-        result += f"  Order Date: {row['order_date'].strftime('%Y-%m-%d')}\n"
         
-        est_delivery = row['est_delivery']
-        if pd.notna(est_delivery):
+        if 'order_date' in row and pd.notna(row['order_date']):
+            result += f"  Order Date: {row['order_date'].strftime('%Y-%m-%d')}\n"
+        
+        if 'est_delivery' in row and pd.notna(row['est_delivery']):
+            est_delivery = row['est_delivery']
             result += f"  Est. Delivery: {est_delivery.strftime('%Y-%m-%d')}\n"
             
-            if row['status'] != 'Delivered' and datetime.now() > est_delivery:
+            if row['status'] not in ['Delivered', 'Cancelled'] and datetime.now() > est_delivery:
                 days_late = (datetime.now() - est_delivery).days
                 result += f"  ⚠️ DELAYED: {days_late} day(s) overdue\n"
         else:
@@ -298,31 +323,29 @@ def check_customer_order_status(customer_id: str) -> dict:
         
         orders_df = data['orders_df']
         
-        # Debug logging
-        print(f"DEBUG check_customer_order_status:")
-        print(f"  - customer_id param: {customer_id}")
-        print(f"  - orders_df shape: {orders_df.shape}")
-        print(f"  - orders_df columns: {list(orders_df.columns)}")
-        print(f"  - orders_df empty: {orders_df.empty}")
-        
         if orders_df.empty:
             return {"status": "normal", "message": "You have no active orders"}
         
-        # Check if customer_id column exists
         if 'customer_id' not in orders_df.columns:
             print(f"ERROR: 'customer_id' column not found in orders_df")
             print(f"Available columns: {list(orders_df.columns)}")
             return {"status": "error", "message": "Data structure error"}
         
         clean_id = str(customer_id).strip().upper()
-        print(f"  - clean_id: {clean_id}")
-        print(f"  - Sample customer_ids in orders: {orders_df['customer_id'].head().tolist()}")
-        
         customer_orders = orders_df[orders_df['customer_id'] == clean_id]
-        print(f"  - Found {len(customer_orders)} orders for customer")
         
         if customer_orders.empty:
             return {"status": "normal", "message": "You have no active orders"}
+        
+        # Check if est_delivery column exists
+        if 'est_delivery' not in customer_orders.columns:
+            # If no delivery dates, just show order count
+            count = len(customer_orders)
+            return {
+                "status": "normal",
+                "message": f"✅ You have {count} active order{'s' if count > 1 else ''}",
+                "count": count
+            }
         
         today = pd.to_datetime(datetime.now().strftime('%Y-%m-%d'))
         
@@ -425,6 +448,9 @@ def check_for_revenue_anomalies() -> str:
     if len(revenue_df) < 5:
         return "Not enough data points to run anomaly detection."
 
+    if 'amount' not in revenue_df.columns:
+        return "ERROR: 'amount' column not found in revenue data."
+
     X = revenue_df[['amount']].values
     model = IsolationForest(contamination=0.1, random_state=42)
     model.fit(X)
@@ -433,7 +459,8 @@ def check_for_revenue_anomalies() -> str:
     
     if not anomalies.empty:
         latest_anomaly = anomalies.iloc[-1]
-        return f"CRITICAL REVENUE ANOMALY: Unusual pattern on {latest_anomaly['date'].strftime('%Y-%m-%d')} - Amount: ${latest_anomaly['amount']:,.2f} (Order: {latest_anomaly['order_id']})."
+        date_str = latest_anomaly['date'].strftime('%Y-%m-%d') if 'date' in latest_anomaly and pd.notna(latest_anomaly['date']) else 'Unknown'
+        return f"CRITICAL REVENUE ANOMALY: Unusual pattern on {date_str} - Amount: ${latest_anomaly['amount']:,.2f} (Order: {latest_anomaly['order_id']})."
     else:
         return "SUCCESS: No significant revenue anomalies detected."
 
@@ -446,6 +473,10 @@ def check_for_critical_delays() -> str:
     
     orders_df = data['orders_df']
     customers_df = data['customers_df']
+    
+    # Check if est_delivery column exists
+    if 'est_delivery' not in orders_df.columns:
+        return "WARNING: Delivery date tracking not available. Cannot check for delays."
     
     today = pd.to_datetime(datetime.now().strftime('%Y-%m-%d'))
     
