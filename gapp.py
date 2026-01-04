@@ -478,7 +478,7 @@ def handle_chat_interaction(prompt, role):
     for attempt in range(max_retries):
         try:
             response = client.models.generate_content(
-                model='gemini-2.0-flash-exp',
+                model='gemini-2.5-flash',
                 contents=contents,
                 config=config
             )
@@ -552,7 +552,7 @@ def handle_chat_interaction(prompt, role):
                         
                         # Get final response
                         response = client.models.generate_content(
-                            model='gemini-2.0-flash-exp',
+                            model='gemini-2.5-flash',
                             contents=contents,
                             config=config
                         )
@@ -936,3 +936,4 @@ elif st.session_state.page == "customer_chat":
     render_chat_page("customer")
 elif st.session_state.page == "business_chat":
     render_chat_page("business")
+
