@@ -1,9 +1,9 @@
-# gtools.py - FIXED VERSION with robust column handling
+# gtools.py - Streamlit Cloud Compatible Version
 import firebase_admin
 from firebase_admin import credentials, firestore
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import json
 import os
 from sklearn.ensemble import IsolationForest
@@ -30,6 +30,7 @@ try:
                 firebase_admin.initialize_app(cred)
                 db = firestore.client()
                 FIREBASE_INIT_STATUS = "SUCCESS (Streamlit Cloud)"
+                print(f"✅ Firebase initialized from Streamlit secrets")
             else:
                 raise KeyError("No Streamlit secrets found")
         except (ImportError, KeyError, AttributeError) as e:
@@ -39,22 +40,20 @@ try:
                 firebase_admin.initialize_app(cred)
                 db = firestore.client()
                 FIREBASE_INIT_STATUS = "SUCCESS (Local File)"
+                print(f"✅ Firebase initialized from local file")
             else:
                 FIREBASE_INIT_STATUS = f"ERROR: Firebase credentials not found. Checked Streamlit secrets and local file ({FIREBASE_CREDS_FILE})"
                 db = None
+                print(f"⚠️ {FIREBASE_INIT_STATUS}")
     else:
         db = firestore.client()
         FIREBASE_INIT_STATUS = "SUCCESS (Already Initialized)"
+        print(f"✅ Firebase already initialized")
         
 except Exception as e:
     FIREBASE_INIT_STATUS = f"ERROR: Firebase Initialization Failed. Details: {str(e)}"
     db = None
-    
-# Debug logging (will show in Streamlit Cloud logs)
-if db is None:
     print(f"⚠️ Firebase initialization failed: {FIREBASE_INIT_STATUS}")
-else:
-    print(f"✅ Firebase initialized: {FIREBASE_INIT_STATUS}")
 
 
 # --- Data Loading Helper Functions ---
@@ -78,7 +77,9 @@ def get_firestore_collection(collection_name: str) -> tuple[pd.DataFrame, str]:
         return df, "SUCCESS"
         
     except Exception as e:
-        return pd.DataFrame(), str(f"ERROR: Failed to retrieve collection '{collection_name}'. Details: {e}")
+        error_msg = f"ERROR: Failed to retrieve collection '{collection_name}'. Details: {e}"
+        print(error_msg)
+        return pd.DataFrame(), error_msg
 
 
 def load_data():
@@ -114,29 +115,46 @@ def load_data():
             series = series.dt.tz_localize(None)
         return series
     
-    # --- Normalize Column Names (handle case sensitivity) ---
-    def normalize_columns(df):
-        """Normalize column names to lowercase with underscores"""
-        df.columns = df.columns.str.strip().str.lower().str.replace(' ', '_')
-        return df
-    
-    # Normalize all dataframes
-    if not customers_df.empty:
-        customers_df = normalize_columns(customers_df)
-    if not orders_df.empty:
-        orders_df = normalize_columns(orders_df)
-    if not products_df.empty:
-        products_df = normalize_columns(products_df)
-    if not revenue_df.empty:
-        revenue_df = normalize_columns(revenue_df)
+    # --- Normalize column names (handle case variations) ---
+    def normalize_columns(df, expected_mapping):
+        """Normalize column names to lowercase standard format"""
+        # Create a case-insensitive mapping
+        current_cols = {col.lower(): col for col in df.columns}
+        rename_map = {}
+        
+        for standard_name, possible_names in expected_mapping.items():
+            for possible in possible_names:
+                if possible.lower() in current_cols:
+                    rename_map[current_cols[possible.lower()]] = standard_name
+                    break
+        
+        return df.rename(columns=rename_map)
     
     # --- Process Customers ---
     if not customers_df.empty:
+        customer_mapping = {
+            'customer_id': ['CustomerID', 'customer_id', 'customerId'],
+            'name': ['Name', 'name'],
+            'email': ['Email', 'email'],
+            'region': ['Region', 'region']
+        }
+        customers_df = normalize_columns(customers_df, customer_mapping)
+        
         if 'customer_id' in customers_df.columns:
             customers_df['customer_id'] = customers_df['customer_id'].astype(str).str.strip().str.upper()
     
     # --- Process Orders ---
     if not orders_df.empty:
+        orders_mapping = {
+            'order_id': ['OrderID', 'order_id', 'orderId'],
+            'customer_id': ['CustomerID', 'customer_id', 'customerId'],
+            'product_id': ['ProductID', 'product_id', 'productId'],
+            'status': ['Status', 'status'],
+            'order_date': ['OrderDate', 'order_date', 'orderDate'],
+            'est_delivery': ['EstDeliveryDate', 'est_delivery', 'estDelivery', 'estimated_delivery']
+        }
+        orders_df = normalize_columns(orders_df, orders_mapping)
+        
         if 'order_id' in orders_df.columns:
             orders_df['order_id'] = orders_df['order_id'].astype(str)
         if 'customer_id' in orders_df.columns:
@@ -144,19 +162,24 @@ def load_data():
         if 'product_id' in orders_df.columns:
             orders_df['product_id'] = orders_df['product_id'].astype(str)
         
-        # Date conversions - handle both possible column names
-        for col in ['order_date', 'orderdate']:
-            if col in orders_df.columns:
-                orders_df['order_date'] = to_datetime_clean(orders_df[col])
-                break
-        
-        for col in ['est_delivery', 'estdelivery', 'estimated_delivery']:
-            if col in orders_df.columns:
-                orders_df['est_delivery'] = to_datetime_clean(orders_df[col])
-                break
+        # Date conversions
+        if 'order_date' in orders_df.columns:
+            orders_df['order_date'] = to_datetime_clean(orders_df['order_date'])
+        if 'est_delivery' in orders_df.columns:
+            orders_df['est_delivery'] = to_datetime_clean(orders_df['est_delivery'])
     
     # --- Process Products ---
     if not products_df.empty:
+        products_mapping = {
+            'product_id': ['ProductID', 'product_id', 'productId'],
+            'name': ['Name', 'name'],
+            'category': ['Category', 'category'],
+            'price': ['Price', 'price'],
+            'stock_level': ['StockLevel', 'stock_level', 'stockLevel'],
+            'total_sold': ['TotalSold', 'total_sold', 'totalSold']
+        }
+        products_df = normalize_columns(products_df, products_mapping)
+        
         if 'product_id' in products_df.columns:
             products_df['product_id'] = products_df['product_id'].astype(str)
         if 'price' in products_df.columns:
@@ -166,12 +189,23 @@ def load_data():
     
     # --- Process Revenue ---
     if not revenue_df.empty:
+        revenue_mapping = {
+            'revenue_id': ['RevenueID', 'revenue_id', 'revenueId'],
+            'order_id': ['OrderID', 'order_id', 'orderId'],
+            'amount': ['Amount', 'amount'],
+            'date': ['Date', 'date'],
+            'payment_method': ['PaymentMethod', 'payment_method', 'paymentMethod']
+        }
+        revenue_df = normalize_columns(revenue_df, revenue_mapping)
+        
         if 'order_id' in revenue_df.columns:
             revenue_df['order_id'] = revenue_df['order_id'].astype(str)
         if 'date' in revenue_df.columns:
             revenue_df['date'] = to_datetime_clean(revenue_df['date'])
         if 'amount' in revenue_df.columns:
             revenue_df['amount'] = pd.to_numeric(revenue_df['amount'], errors='coerce')
+    
+    print(f"✅ Data loaded successfully - Customers: {len(customers_df)}, Orders: {len(orders_df)}, Products: {len(products_df)}, Revenue: {len(revenue_df)}")
     
     return {
         "customers_df": customers_df,
@@ -328,7 +362,6 @@ def check_customer_order_status(customer_id: str) -> dict:
         
         if 'customer_id' not in orders_df.columns:
             print(f"ERROR: 'customer_id' column not found in orders_df")
-            print(f"Available columns: {list(orders_df.columns)}")
             return {"status": "error", "message": "Data structure error"}
         
         clean_id = str(customer_id).strip().upper()
@@ -339,7 +372,6 @@ def check_customer_order_status(customer_id: str) -> dict:
         
         # Check if est_delivery column exists
         if 'est_delivery' not in customer_orders.columns:
-            # If no delivery dates, just show order count
             count = len(customer_orders)
             return {
                 "status": "normal",
@@ -500,6 +532,110 @@ def check_for_critical_delays() -> str:
         return f"ALERT: {count} orders are critically delayed!\nAffected Orders: {', '.join(order_list)}\nAffected Customers: {', '.join(customer_names)}"
     else:
         return "SUCCESS: No critical delivery delays found."
+
+
+# --- LEADS TRACKING ---
+
+def log_customer_lead(customer_id: str, message: str):
+    """Logs a customer interaction as a lead in Firestore."""
+    if db is None:
+        return
+    try:
+        lead_data = {
+            "customer_id": customer_id.upper(),
+            "timestamp": datetime.now(timezone.utc),
+            "preview": message[:50] + "..." if len(message) > 50 else message,
+            "type": "Chat Interaction"
+        }
+        db.collection('leads').add(lead_data)
+    except Exception as e:
+        print(f"Failed to log lead: {e}")
+
+
+def get_leads_data():
+    """Retrieves all leads for the business dashboard."""
+    df, status = get_firestore_collection('leads')
+    if not df.empty and 'timestamp' in df.columns:
+        df['timestamp'] = pd.to_datetime(df['timestamp']).dt.strftime('%Y-%m-%d %H:%M:%S')
+        df = df.sort_values(by='timestamp', ascending=False)
+    return df
+
+
+# --- SUPPLY CHAIN PREDICTIONS ---
+
+def get_supply_chain_predictions():
+    """Generates supply chain predictions based on product velocity."""
+    products_df, _ = get_firestore_collection('products')
+    orders_df, _ = get_firestore_collection('orders')
+    
+    if products_df.empty:
+        return pd.DataFrame()
+
+    # Normalize column names for products
+    products_mapping = {
+        'product_id': ['ProductID', 'product_id', 'productId'],
+        'name': ['Name', 'name'],
+        'stock_level': ['StockLevel', 'stock_level', 'stockLevel']
+    }
+    
+    current_cols = {col.lower(): col for col in products_df.columns}
+    rename_map = {}
+    for standard_name, possible_names in products_mapping.items():
+        for possible in possible_names:
+            if possible.lower() in current_cols:
+                rename_map[current_cols[possible.lower()]] = standard_name
+                break
+    products_df = products_df.rename(columns=rename_map)
+
+    if len(orders_df) < 10:
+        # Demo data if insufficient orders
+        if 'product_id' not in products_df.columns:
+            products_df['product_id'] = products_df.index.astype(str)
+            
+        demo_sales = [12, 45, 8, 25, 3, 50, 15, 30, 5, 20]
+        sales_map = {products_df.iloc[i]['product_id']: demo_sales[i] for i in range(len(products_df)) if i < len(demo_sales)}
+        
+        products_df['monthly_sales'] = products_df['product_id'].map(sales_map).fillna(5)
+        products_df['daily_burn_rate'] = products_df['monthly_sales'] / 30
+    else:
+        # Normalize orders columns
+        orders_mapping = {
+            'product_id': ['ProductID', 'product_id', 'productId'],
+            'order_date': ['OrderDate', 'order_date', 'orderDate']
+        }
+        
+        current_cols = {col.lower(): col for col in orders_df.columns}
+        rename_map = {}
+        for standard_name, possible_names in orders_mapping.items():
+            for possible in possible_names:
+                if possible.lower() in current_cols:
+                    rename_map[current_cols[possible.lower()]] = standard_name
+                    break
+        orders_df = orders_df.rename(columns=rename_map)
+        
+        orders_df['order_date'] = pd.to_datetime(orders_df['order_date'])
+        now_utc = datetime.now(timezone.utc)
+        thirty_days_ago = now_utc - pd.Timedelta(days=30)
+        last_30_days = orders_df[orders_df['order_date'] > thirty_days_ago].copy()
+        
+        velocity = last_30_days.groupby('product_id').size().reset_index(name='monthly_sales')
+        velocity['daily_burn_rate'] = velocity['monthly_sales'] / 30
+        products_df = products_df.merge(velocity, on='product_id', how='left').fillna(0)
+
+    products_df['days_until_stockout'] = products_df.apply(
+        lambda x: x['stock_level'] / x['daily_burn_rate'] if x['daily_burn_rate'] > 0 else 999, axis=1
+    )
+    
+    def get_risk(days):
+        if days <= 7: return "CRITICAL"
+        if days <= 14: return "HIGH"
+        if days <= 30: return "MODERATE"
+        return "LOW"
+    
+    products_df['risk_level'] = products_df['days_until_stockout'].apply(get_risk)
+    
+    result = products_df[['name', 'stock_level', 'daily_burn_rate', 'days_until_stockout', 'risk_level']]
+    return result.sort_values('days_until_stockout')
 
 
 # Legacy functions for backward compatibility
