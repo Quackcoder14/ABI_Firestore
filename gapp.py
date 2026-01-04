@@ -868,7 +868,7 @@ def render_chat_page(role):
             if st.button("⬅️ Back to Command Center"):
                 st.session_state.biz_view = "hub"
                 st.rerun()
-            st.title("📦 Predictive Supply Chain Insights")
+            st.title("📦 Predictive Supply Chain Insights (sample forecasting since >500 records required for realtime analytics)")
             
             forecast_df = get_supply_chain_predictions()
             if forecast_df.empty: st.warning("Insufficient data for forecasting.")
@@ -936,4 +936,5 @@ elif st.session_state.page == "customer_chat":
     render_chat_page("customer")
 elif st.session_state.page == "business_chat":
     render_chat_page("business")
+
 
