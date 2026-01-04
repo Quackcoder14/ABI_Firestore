@@ -112,15 +112,7 @@ pip install -r requirements.txt
 2. Create an API key
 3. Copy the key
 
-### 5. Configure Environment
-
-Create a `.env` file:
-
-```env
-GEMINI_API_KEY=your_gemini_api_key_here
-```
-
-### 6. Initialize Firestore Collections
+### 5. Initialize Firestore Collections
 
 Create these collections in Firestore with the following structure:
 
@@ -168,15 +160,6 @@ Create these collections in Firestore with the following structure:
 }
 ```
 
-### 7. Run Locally
-
-```bash
-streamlit run gapp.py
-```
-
-The app will open at `http://localhost:8501`
-
----
 
 ## ☁️ Deploy to Streamlit Cloud
 
