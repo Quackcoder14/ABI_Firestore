@@ -29,7 +29,7 @@ ABI Agent is a next-generation business intelligence platform that combines cutt
 - **📦 Smart Order Tracking**: AI assistant that understands natural language queries
 - **🚚 Delivery Status**: Real-time updates with automatic delay detection
 - **🔔 Proactive Notifications**: Instant alerts for order issues
-- **💬 Conversational AI**: Powered by Gemini 2.0 Flash for human-like interactions
+- **💬 Conversational AI**: Powered by Gemini 2.5 Flash for human-like interactions
 - **🔒 Privacy Protected**: Strict data isolation per customer
 
 ### 📈 Business Command Center
@@ -44,19 +44,12 @@ ABI Agent is a next-generation business intelligence platform that combines cutt
 - Track all customer interactions
 - Engagement timestamps and message previews
 - Lead scoring and prioritization
-- Export capabilities for CRM integration
 
 #### 3. **Predictive Supply Chain**
 - ML-powered inventory forecasting using Isolation Forest
 - Daily burn rate calculations
 - Risk-level categorization (Critical, High, Moderate, Low)
 - Stock-out prediction up to 30 days ahead
-
-#### 4. **Anomaly Detection System**
-- Real-time revenue anomaly detection
-- Critical delivery delay monitoring
-- Automated alert system
-- Visual status indicators in sidebar
 
 ---
 
@@ -247,9 +240,9 @@ abi-agent/
 ├── gapp.py                 # Main Streamlit application
 ├── gtools.py               # Backend tools & Firebase integration
 ├── requirements.txt        # Python dependencies
-├── credentials.json        # User authentication (auto-created)
-├── firebase_creds.json     # Firebase service account key
-├── .env                    # Environment variables (local)
+├── credentials.json        # User authentication
+├── firebase_creds.example.json     # Firebase service account key format
+├── LICENSE                # MIT License for this project
 ├── .gitignore             # Git ignore file
 └── README.md              # This file
 ```
@@ -287,35 +280,35 @@ erDiagram
     ORDERS ||--|| REVENUE : generates
     
     CUSTOMERS {
-        string CustomerID PK
-        string Name
-        string Email
-        string Region
+        string customer_id PK
+        string name
+        string email
+        string region
     }
     
     ORDERS {
-        string OrderID PK
-        string CustomerID FK
-        string ProductID FK
-        string Status
-        datetime OrderDate
-        datetime EstDeliveryDate
+        string order_id PK
+        string customer_id FK
+        string product_id FK
+        string status
+        datetime order_date
+        datetime est_delivery
     }
     
     PRODUCTS {
-        string ProductID PK
-        string Name
-        string Category
-        float Price
-        int StockLevel
+        string product_id PK
+        string name
+        string category
+        float price
+        int stock_level
     }
     
     REVENUE {
-        string RevenueID PK
-        string OrderID FK
-        float Amount
-        datetime Date
-        string PaymentMethod
+        string revenue_id PK
+        string order_id FK
+        float amount
+        datetime date
+        string payment_method
     }
 ```
 
@@ -341,15 +334,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 👨‍💻 Author
 
-**Your Name**
+**Dhanush S*
 - GitHub: [@Quackcoder14](https://github.com/Quackcoder14)
 - Email: dhanushs123411@gmail.com
 
 ---
-
-
-**⭐ Star this repo if you find it helpful! ⭐**
-
-Made with ❤️ and ☕ by [Your Name]
-
-</div>
