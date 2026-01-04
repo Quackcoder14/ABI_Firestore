@@ -65,7 +65,7 @@ ABI Agent is a next-generation business intelligence platform that combines cutt
 | Category | Technology |
 |----------|-----------|
 | **Frontend** | Streamlit 1.28+ |
-| **AI/ML** | Google Gemini 2.0 Flash, scikit-learn |
+| **AI/ML** | Google Gemini 2.5 Flash, scikit-learn |
 | **Database** | Google Cloud Firestore |
 | **Data Processing** | Pandas, NumPy |
 | **Authentication** | Custom JSON-based system |
@@ -87,8 +87,8 @@ ABI Agent is a next-generation business intelligence platform that combines cutt
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/abi-agent.git
-cd abi-agent
+git clone https://github.com/Quackcoder14/ABI_Firestore.git
+cd ABI_Firestore
 ```
 
 ### 2. Install Dependencies
@@ -127,45 +127,44 @@ Create these collections in Firestore with the following structure:
 **customers** collection:
 ```json
 {
-  "CustomerID": "CUST_001",
-  "Name": "John Doe",
-  "Email": "john@example.com",
-  "Region": "North"
+  "customer_id": "CUST_001",
+  "name": "John Doe",
+  "email": "john@example.com",
+  "region": "North"
 }
 ```
 
 **orders** collection:
 ```json
 {
-  "OrderID": "ORD_001",
-  "CustomerID": "CUST_001",
-  "ProductID": "PROD_001",
-  "Status": "Shipped",
-  "OrderDate": "2024-01-15T10:30:00Z",
-  "EstDeliveryDate": "2024-01-20T18:00:00Z"
+  "order_id": "ORD_001",
+  "customer_id": "CUST_001",
+  "product_id": "PROD_001",
+  "status": "Shipped",
+  "order_date": "2024-01-15T10:30:00Z",
+  "est_delivery": "2024-01-20T18:00:00Z"
 }
 ```
 
 **products** collection:
 ```json
 {
-  "ProductID": "PROD_001",
-  "Name": "Laptop",
-  "Category": "Electronics",
-  "Price": 999.99,
-  "StockLevel": 50,
-  "TotalSold": 150
+  "product_id": "PROD_001",
+  "name": "Laptop",
+  "category": "Electronics",
+  "price": 9000,
+  "stock_level": 50
 }
 ```
 
 **revenue** collection:
 ```json
 {
-  "RevenueID": "REV_001",
-  "OrderID": "ORD_001",
-  "Amount": 999.99,
-  "Date": "2024-01-15T10:30:00Z",
-  "PaymentMethod": "Credit Card"
+  "revenue_id": "REV_001",
+  "order_id": "ORD_001",
+  "amount": 9000,
+  "date": "2024-01-15T10:30:00Z",
+  "payment_method": "Credit Card"
 }
 ```
 
