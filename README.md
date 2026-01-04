@@ -228,19 +228,14 @@ Click "Deploy" and your app will be live in minutes! 🎉
 
 ```
 "Show me all my orders"
-"When will my order arrive?"
-"Do I have any delayed orders?"
 "What's the status of order ORD_001?"
 ```
 
 ### Sample Business Queries
 
 ```
-"Show me total revenue for last month"
-"Which product has the highest sales?"
+"Show me total revenue"
 "List all delayed orders"
-"Who are my top 5 customers by revenue?"
-"Show me products with low stock levels"
 ```
 
 ---
