@@ -1,4 +1,4 @@
-# gapp.py - Streamlit Cloud Compatible Version
+# gapp.py - Universal Deployment Compatible Version
 import streamlit as st
 import os
 from dotenv import load_dotenv
@@ -21,20 +21,43 @@ from gtools import (
 from datetime import datetime
 
 # --- Configuration and Initialization ---
-# Try to load from .env file (for local development)
-load_dotenv()
-
-# Get API key from environment or Streamlit secrets
-GEMINI_API_KEY = None
-try:
-    # First try environment variable (local)
-    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+def get_gemini_api_key():
+    """
+    Retrieves Gemini API key from multiple sources with fallback.
+    Priority: Streamlit secrets > Environment variable > .env file
+    """
+    api_key = None
+    source = None
     
-    # If not found, try Streamlit secrets (cloud)
-    if not GEMINI_API_KEY and hasattr(st, 'secrets'):
-        GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", None)
-except Exception as e:
-    print(f"Error loading API key: {e}")
+    # Try Streamlit secrets first (for cloud deployment)
+    try:
+        if hasattr(st, 'secrets') and 'GEMINI_API_KEY' in st.secrets:
+            api_key = st.secrets['GEMINI_API_KEY']
+            source = "Streamlit Secrets"
+    except Exception as e:
+        print(f"Could not load from Streamlit secrets: {e}")
+    
+    # Try environment variable
+    if not api_key:
+        api_key = os.getenv("GEMINI_API_KEY")
+        if api_key:
+            source = "Environment Variable"
+    
+    # Try .env file as last resort
+    if not api_key:
+        load_dotenv()
+        api_key = os.getenv("GEMINI_API_KEY")
+        if api_key:
+            source = ".env File"
+    
+    if api_key:
+        print(f"✅ Gemini API Key loaded from: {source}")
+    else:
+        print("⚠️ Gemini API Key not found in any source")
+    
+    return api_key
+
+GEMINI_API_KEY = get_gemini_api_key()
 
 # --- Streamlit Setup ---
 st.set_page_config(
@@ -48,12 +71,20 @@ st.set_page_config(
 CREDENTIALS_FILE = "credentials.json"
 
 def load_credentials():
+    """Load user credentials with graceful error handling"""
     try:
         if not os.path.exists(CREDENTIALS_FILE):
+            # Create empty credentials file if it doesn't exist
             with open(CREDENTIALS_FILE, "w") as f:
                 json.dump({}, f)
+            return {}
+        
         with open(CREDENTIALS_FILE, "r") as f:
-            return json.load(f)
+            content = f.read().strip()
+            if not content:
+                return {}
+            return json.loads(content)
+    
     except json.JSONDecodeError:
         st.error("Error: 'credentials.json' is improperly formatted. Resetting to empty.")
         return {}
@@ -62,6 +93,7 @@ def load_credentials():
         return {}
 
 def save_credentials(data):
+    """Save user credentials with error handling"""
     try:
         with open(CREDENTIALS_FILE, "w") as f:
             json.dump(data, f, indent=4)
@@ -385,7 +417,9 @@ if "biz_view" not in st.session_state:
 def initialize_gemini_client():
     """Initializes and caches the Gemini Client connection."""
     if not GEMINI_API_KEY:
-        st.error("⚠️ GEMINI_API_KEY not found. Please set it in Streamlit secrets or .env file.")
+        st.error("⚠️ GEMINI_API_KEY not found. Please set it in:")
+        st.error("• Streamlit Cloud: Add to Secrets in dashboard")
+        st.error("• Local: Add to .env file or environment variables")
         st.stop()
     try:
         return genai.Client(api_key=GEMINI_API_KEY)
@@ -733,8 +767,15 @@ def render_chat_page(role):
         st.rerun()
         return
 
-    # Show notification on first load (keeping your original notification logic)
-    # [NOTIFICATION CODE - Same as your original, omitted for brevity]
+    # Show notification on first load
+    if not st.session_state.notification_shown and role == "customer":
+        if st.session_state.customer_id:
+            order_status = check_customer_order_status(st.session_state.customer_id)
+            if order_status["status"] == "delayed":
+                st.warning(f"🔔 {order_status['message']} Ask me for details!")
+            elif order_status["status"] == "normal" and "count" in order_status:
+                st.info(f"📦 {order_status['message']}")
+        st.session_state.notification_shown = True
 
     # --- SIDEBAR CONTENT ---
     with st.sidebar:
@@ -788,7 +829,7 @@ def render_chat_page(role):
 
     # --- MAIN CONTENT LOGIC ---
     if role == "customer":
-        # Customer chat (same as your original)
+        # Customer chat
         st.markdown("<div style='margin-top: 30px;'>", unsafe_allow_html=True)
         username = st.session_state.authenticated_user
         st.markdown(f"""
@@ -868,7 +909,7 @@ def render_chat_page(role):
             if st.button("⬅️ Back to Command Center"):
                 st.session_state.biz_view = "hub"
                 st.rerun()
-            st.title("📦 Predictive Supply Chain Insights (sample forecasting since >500 records required for realtime analytics)")
+            st.title("📦 Predictive Supply Chain Insights")
             
             forecast_df = get_supply_chain_predictions()
             if forecast_df.empty: st.warning("Insufficient data for forecasting.")
@@ -882,7 +923,7 @@ def render_chat_page(role):
                 st.session_state.biz_view = "hub"
                 st.rerun()
             
-            # Business chat (same as your original)
+            # Business chat
             st.markdown("<div style='margin-top: 30px;'>", unsafe_allow_html=True)
             username = st.session_state.authenticated_user
             st.markdown(f"""
@@ -935,6 +976,6 @@ elif st.session_state.page == "auth":
 elif st.session_state.page == "customer_chat":
     render_chat_page("customer")
 elif st.session_state.page == "business_chat":
-    render_chat_page("business")
-
-
+    render_chat_page("business") Incorrect role for this user.")
+        else:
+            st.error("Authentication failed:
