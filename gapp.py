@@ -976,6 +976,7 @@ elif st.session_state.page == "auth":
 elif st.session_state.page == "customer_chat":
     render_chat_page("customer")
 elif st.session_state.page == "business_chat":
-    render_chat_page("business") Incorrect role for this user.")
-        else:
-            st.error("Authentication failed:
+    render_chat_page("business")
+else:
+    st.error("Authentication failed : Incorrect role for this user.")
+
