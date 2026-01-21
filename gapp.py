@@ -21,16 +21,14 @@ from gtools import (
 from datetime import datetime
 
 # --- Configuration and Initialization ---
-# Try to load from .env file (for local development)
 load_dotenv()
 
-# Get API key from environment or Streamlit secrets
 GEMINI_API_KEY = None
 try:
-    # First try environment variable (local)
+    # First try environment variable
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
     
-    # If not found, try Streamlit secrets (cloud)
+    # If not found, try Streamlit secrets
     if not GEMINI_API_KEY and hasattr(st, 'secrets'):
         GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", None)
 except Exception as e:
@@ -936,6 +934,7 @@ elif st.session_state.page == "customer_chat":
     render_chat_page("customer")
 elif st.session_state.page == "business_chat":
     render_chat_page("business")
+
 
 
 
